@@ -16,6 +16,9 @@
   <ItemGroup>
     <Compile Remove="releases/**" />
     <None Remove="releases/**" />
+    <!-- github/ 是发布用源码副本，一起编译会和当前源码重复定义 -->
+    <Compile Remove="github/**" />
+    <None Remove="github/**" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="MelonLoader">

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
 using LastEpoch_AffixRoll.Core;
@@ -8,6 +9,11 @@ namespace LastEpoch_AffixRoll.Features;
 public static class GroundLabel
 {
 	public static string HookName = "none";
+
+	// S5 之前只钩 SetGroundTooltipText（当时是 1 个参数）。
+	// S5 起它变成无参 private，而真正往标签上写文本的是 SetLabelText(bool recalculateItemName)。
+	// 两个都挂：Apply() 每次都从 ItemData.FullName 重新拼，重复执行结果一致，不会叠加。
+	private static readonly string[] HookCandidates = new string[2] { "SetLabelText", "SetGroundTooltipText" };
 
 	private static HarmonyLib.Harmony _harmony;
 
@@ -40,10 +46,21 @@ public static class GroundLabel
 		{
 			return;
 		}
+		List<string> hooked = new List<string>();
 		MethodInfo[] array = methods;
 		foreach (MethodInfo methodInfo in array)
 		{
-			if (!string.Equals(methodInfo.Name, "SetGroundTooltipText", StringComparison.Ordinal))
+			bool matched = false;
+			string[] hookCandidates = HookCandidates;
+			foreach (string candidate in hookCandidates)
+			{
+				if (string.Equals(methodInfo.Name, candidate, StringComparison.Ordinal))
+				{
+					matched = true;
+					break;
+				}
+			}
+			if (!matched)
 			{
 				continue;
 			}
@@ -56,7 +73,8 @@ public static class GroundLabel
 			{
 				continue;
 			}
-			if (parameters == null || parameters.Length != 1)
+			// 0 个或 1 个参数都接受：Postfix 只取 __instance，多出来的原参数可以不管
+			if (parameters == null || parameters.Length > 1)
 			{
 				continue;
 			}
@@ -68,14 +86,18 @@ public static class GroundLabel
 				}
 				MethodInfo method = typeof(GroundLabel).GetMethod("Postfix", BindingFlags.Static | BindingFlags.Public);
 				_harmony.Patch((MethodBase)methodInfo, (HarmonyMethod)null, new HarmonyMethod(method));
-				HookName = "GroundItemLabel.SetGroundTooltipText(1)";
-				_resolved = true;
-				Log.Msg("[AffixRoll] 地面标签钩子已挂载。");
+				hooked.Add(methodInfo.Name + "(" + parameters.Length + ")");
 			}
 			catch (Exception ex)
 			{
 				Log.WarnOnce("Ground:patch", "[AffixRoll] 挂载地面标签失败: " + ex.Message);
 			}
+		}
+		if (hooked.Count > 0)
+		{
+			HookName = string.Join(" + ", hooked);
+			_resolved = true;
+			Log.Msg("[AffixRoll] 地面标签钩子已挂载: " + HookName);
 		}
 	}
 
@@ -114,8 +136,9 @@ public static class GroundLabel
 		string text = Reflect.ToStr(Reflect.Get(obj, "FullName", "fullName"));
 		object obj3 = Reflect.Get(obj, "affixes", "Affixes");
 		int num = Reflect.Count(obj3);
-		bool flag = Items.IsUnique(obj);
+		bool flag = Items.IsUniqueOrLegendary(obj);
 		bool isSetItem = Items.IsSet(obj);
+		bool isLegendaryItem = Items.IsLegendary(obj);
 		bool isCorruptedItem = Items.IsCorrupted(obj);
 		bool isSetLike = isSetItem && Cfg.SetItems.Value && !isCorruptedItem;
 		if ((flag && num == 0) || isSetLike)
@@ -131,7 +154,8 @@ public static class GroundLabel
 				text = text + " " + Rolls.Col(Rolls.PotentialHex(num3), "[" + Rolls.CnNumber(num3) + "孔]");
 			}
 		}
-		if (Items.IsExalted(obj) && num > 0)
+		// 传奇物品不是 isExaltedItem，之前只判 IsExalted 会把它的传奇词缀整个漏掉。
+		if ((Items.IsExalted(obj) || isLegendaryItem) && num > 0)
 		{
 			string text2 = "";
 			foreach (object item in Reflect.Each(obj3))
@@ -163,10 +187,12 @@ public static class GroundLabel
 		{
 			return full;
 		}
+		// FullName 形如 "<词缀>的<物品名>"；但如果物品带多条前缀（传奇经常是 2~4 条），
+		// 会是 "A的B的C的物品名"，这时候必须取最后一段，写死取 array[1] 会把真正的物品名砍没。
 		string[] array = full.Split(new string[1] { "的" }, StringSplitOptions.None);
 		if (array != null && array.Length > 1)
 		{
-			return array[1];
+			return array[array.Length - 1];
 		}
 		return array[0];
 	}
