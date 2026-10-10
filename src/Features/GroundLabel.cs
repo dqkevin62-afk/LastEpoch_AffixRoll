@@ -141,20 +141,23 @@ public static class GroundLabel
 		bool isLegendaryItem = Items.IsLegendary(obj);
 		bool isCorruptedItem = Items.IsCorrupted(obj);
 		bool isSetLike = isSetItem && Cfg.SetItems.Value && !isCorruptedItem;
+		int num2 = Reflect.ToInt(Reflect.Get(obj, "weaversWill", "WeaversWill"), 0);
+		int num3 = Reflect.ToInt(Reflect.Get(obj, "legendaryPotential", "LegendaryPotential"), 0);
 		if ((flag && num == 0) || isSetLike)
 		{
-			int num2 = Reflect.ToInt(Reflect.Get(obj, "weaversWill", "WeaversWill"), 0);
 			if (num2 > 0)
 			{
 				text = text + " [" + num2 + "] 刮";
 			}
-			int num3 = Reflect.ToInt(Reflect.Get(obj, "legendaryPotential", "LegendaryPotential"), 0);
 			if (num3 > 0)
 			{
 				text = text + " " + Rolls.Col(Rolls.PotentialHex(num3), "[" + Rolls.CnNumber(num3) + "孔]");
 			}
 		}
 		// 传奇物品不是 isExaltedItem，之前只判 IsExalted 会把它的传奇词缀整个漏掉。
+		// 另外传奇的熔铸词条是从崇高物品里随机抽的，经常只有 T1~T5；若沿用 GroundMinTier(默认 6)
+		// 会把前缀整条滤空、标签只剩名字 —— 所以传奇单独走 LegendaryMinTier(默认 1)。
+		int minTier = (isLegendaryItem ? Cfg.LegendaryMinTier.Value : Cfg.GroundMinTier.Value);
 		if ((Items.IsExalted(obj) || isLegendaryItem) && num > 0)
 		{
 			string text2 = "";
@@ -165,7 +168,7 @@ public static class GroundLabel
 					continue;
 				}
 				int num4 = Reflect.ToInt(Reflect.Get(item, "DisplayTier", "displayTier", "affixTier"), 0);
-				if (num4 >= Cfg.GroundMinTier.Value)
+				if (num4 >= minTier)
 				{
 					string str = Reflect.ToStr(Reflect.Get(item, "affixName", "AffixName"));
 					text2 += Rolls.Col(Rolls.TierHex(num4), "[T" + num4 + "][" + str + "]");
@@ -177,8 +180,24 @@ public static class GroundLabel
 		Reflect.Set(obj2, "text", flag2 ? text.ToUpper() : text);
 		if (Cfg.Diag.Value)
 		{
-			Log.Msg("[AffixRoll] 标签 -> " + Short(text, 110));
+			Log.Msg("[AffixRoll] 标签 " + Short(text, 110) + " | 暗金=" + Items.IsUnique(obj) + " 传奇=" + isLegendaryItem + " 崇高=" + Items.IsExalted(obj) + " 套装=" + isSetItem + " 腐化=" + isCorruptedItem + " LP=" + num3 + " 编织=" + num2 + " 词缀数=" + num + " 门槛=" + minTier + " 词缀T=" + TierList(obj3));
 		}
+	}
+
+	// 诊断用：把物品身上每条词缀的 T 级摊开，用来判断「没显示」是门槛滤掉了还是根本没有词缀。
+	private static string TierList(object affixes)
+	{
+		string text = "";
+		foreach (object item in Reflect.Each(affixes))
+		{
+			if (item == null)
+			{
+				continue;
+			}
+			int num = Reflect.ToInt(Reflect.Get(item, "DisplayTier", "displayTier", "affixTier"), 0);
+			text = ((text.Length > 0) ? (text + ",") : text) + "T" + num;
+		}
+		return (text.Length > 0) ? text : "-";
 	}
 
 	private static string ShortName(string full)

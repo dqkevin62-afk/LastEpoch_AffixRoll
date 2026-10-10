@@ -9,6 +9,7 @@ public class Mod : MelonMod
 	public override void OnInitializeMelon()
 	{
 		Cfg.Init();
+		Items.Probe();
 		Tooltip.Resolve();
 		GroundLabel.Resolve();
 		Log.Msg("[AffixRoll] 已加载。Tooltip: " + Tooltip.HookName + " | Ground: " + GroundLabel.HookName);

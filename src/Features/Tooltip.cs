@@ -61,6 +61,7 @@ public static class Tooltip
 		PatchAll(type, "AffixFormatter", Kind.Affix);
 		PatchAll(type, "UniqueBasicModFormatter", Kind.UniqueMod);
 		PatchAll(type, "ImplicitFormatter", Kind.Implicit);
+		PatchUniqueDescDiag(type);
 		if (_slots.Count > 0)
 		{
 			_resolved = true;
@@ -136,6 +137,64 @@ public static class Tooltip
 			{
 				Log.WarnOnce("Tooltip:patch:" + name, "[AffixRoll] 挂载 " + name + " 失败: " + ex.Message);
 			}
+		}
+	}
+
+	// 诊断用（只读，不改显示）：暗金/传奇的「固定词条」整块由
+	// TooltipItemManager.GetUniqueDescription(...) 生成一个 List<string>，
+	// 我们那几个 Formatter 只负责逐行加标记。所以只要问它「产出了几行」，
+	// 就能区分是「游戏根本没产出词条」还是「产出了却被滤掉」。
+	private static void PatchUniqueDescDiag(Type owner)
+	{
+		try
+		{
+			MethodInfo[] methods = owner.GetMethods(BindingFlags.DeclaredOnly | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+			foreach (MethodInfo methodInfo in methods)
+			{
+				if (!string.Equals(methodInfo.Name, "GetUniqueDescription", StringComparison.Ordinal))
+				{
+					continue;
+				}
+				if (_harmony == null)
+				{
+					_harmony = new HarmonyLib.Harmony("LastEpoch_AffixRoll.Tooltip");
+				}
+				MethodInfo method = typeof(Tooltip).GetMethod("PostfixUniqueDesc", BindingFlags.Static | BindingFlags.Public);
+				_harmony.Patch((MethodBase)methodInfo, (HarmonyMethod)null, new HarmonyMethod(method));
+				Log.Msg("[AffixRoll]   诊断钩子已挂载(只读): TooltipItemManager.GetUniqueDescription");
+				return;
+			}
+		}
+		catch (Exception ex)
+		{
+			Log.WarnOnce("Tooltip:patchdesc", "[AffixRoll] 挂载 GetUniqueDescription 诊断钩子失败: " + ex.Message);
+		}
+	}
+
+	public static void PostfixUniqueDesc(object[] __args, object __result)
+	{
+		try
+		{
+			if (!Cfg.Diag.Value)
+			{
+				return;
+			}
+			object obj = ((__args != null && __args.Length > 0) ? __args[0] : null);
+			Log.Msg("[AffixRoll] 暗金词条块 " + Reflect.ToStr(Reflect.Get(obj, "FullName", "fullName"))
+				+ " | 产出行数=" + Reflect.Count(__result)
+				+ " | 传入 base=" + Reflect.ToInt(Arg(__args, 1), -1)
+				+ " sub=" + Reflect.ToInt(Arg(__args, 2), -1)
+				+ " uniqueId=" + Reflect.ToInt(Arg(__args, 3), -1)
+				+ " | 物品 rarity=" + Reflect.ToInt(Reflect.Get(obj, "rarity", "Rarity"), -1)
+				+ " uniqueID=" + Reflect.ToInt(Reflect.Get(obj, "uniqueID", "uniqueId", "UniqueID"), -1)
+				+ " 暗金=" + Items.IsUnique(obj) + " 传奇=" + Items.IsLegendary(obj) + " 崇高=" + Items.IsExalted(obj)
+				+ " uniqueRolls=" + Reflect.Count(Reflect.Get(obj, "uniqueRolls", "UniqueRolls"))
+				+ " 隐式=" + Reflect.Count(Reflect.Get(obj, "implicits", "Implicits"))
+				+ " 词缀=" + Reflect.Count(Reflect.Get(obj, "affixes", "Affixes")));
+		}
+		catch (Exception ex)
+		{
+			Log.WarnOnce("Tooltip:descpost", "[AffixRoll] GetUniqueDescription 诊断异常: " + ex.Message);
 		}
 	}
 
@@ -257,6 +316,10 @@ public static class Tooltip
 					__result = Rolls.Modify(num4, -1, __result);
 					Sample(value.Label, __result);
 				}
+				else if (Cfg.Diag.Value)
+				{
+					Log.Msg("[AffixRoll] " + value.Label + " 跳过(拿不到 roll) 物品=" + Reflect.ToStr(Reflect.Get(obj, "FullName", "fullName")) + " uniqId=" + Reflect.ToInt(Reflect.Get(obj, "uniqueID", "uniqueId", "UniqueID"), -1) + " idx=" + num + " 原行=" + Clip(__result, 60));
+				}
 				break;
 			}
 			case Kind.Implicit:
@@ -271,6 +334,10 @@ public static class Tooltip
 				{
 					__result = Rolls.Modify(num5, -1, __result);
 					Sample(value.Label, __result);
+				}
+				else if (Cfg.Diag.Value)
+				{
+					Log.Msg("[AffixRoll] " + value.Label + " 跳过(拿不到 roll) 物品=" + Reflect.ToStr(Reflect.Get(obj, "FullName", "fullName")) + " 隐式#" + n + " 原行=" + Clip(__result, 60));
 				}
 				break;
 			}

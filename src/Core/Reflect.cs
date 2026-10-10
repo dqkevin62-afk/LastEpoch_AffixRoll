@@ -282,6 +282,39 @@ public static class Reflect
 		return null;
 	}
 
+	// 兼容性自检用：只问「这个方法在不在」，不调用。
+	public static bool HasMethod(Type t, string name)
+	{
+		if (t == null || string.IsNullOrEmpty(name))
+		{
+			return false;
+		}
+		for (Type cur = t; cur != null; cur = cur.BaseType)
+		{
+			MethodInfo[] ms;
+			try
+			{
+				ms = cur.GetMethods(All);
+			}
+			catch
+			{
+				continue;
+			}
+			if (ms == null)
+			{
+				continue;
+			}
+			for (int i = 0; i < ms.Length; i++)
+			{
+				if (ms[i] != null && string.Equals(ms[i].Name, name, StringComparison.Ordinal))
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
 	public static int Count(object collection)
 	{
 		if (collection == null)

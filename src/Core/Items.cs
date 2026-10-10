@@ -4,6 +4,47 @@ namespace LastEpoch_AffixRoll.Core;
 
 public static class Items
 {
+	private static bool _probed;
+
+	// 兼容性自检：游戏大版本更新后，ItemData 上的 isUnique / isLegendary 之类方法可能被改名或改签名。
+	// 一旦消失，稀有度判定与地面标签会「静默失效」（不报错但也不生效），很难排查 ——
+	// 所以启动时探测一次，缺哪个就直接记进日志。
+	public static void Probe()
+	{
+		if (_probed)
+		{
+			return;
+		}
+		_probed = true;
+		Reflect.Refresh();
+		Type type = Reflect.T("ItemData");
+		if (type == null)
+		{
+			Log.WarnOnce("Items:noitemdata", "[AffixRoll] 兼容性自检: 找不到 ItemData 类型，稀有度判定会全部失效（游戏版本可能变了）。");
+			return;
+		}
+		string[] array = new string[5] { "isUnique", "isLegendary", "isUniqueOrLegendary", "isExaltedItem", "isSet" };
+		string text = "";
+		string text2 = "";
+		for (int i = 0; i < array.Length; i++)
+		{
+			bool flag = Reflect.HasMethod(type, array[i]);
+			text = text + ((text.Length > 0) ? " " : "") + array[i] + "=" + (flag ? "有" : "缺");
+			if (!flag)
+			{
+				text2 = text2 + ((text2.Length > 0) ? ", " : "") + array[i];
+			}
+		}
+		if (text2.Length > 0)
+		{
+			Log.WarnOnce("Items:probe", "[AffixRoll] 兼容性自检: 缺少 " + text2 + " —— 游戏版本可能变了，相关功能会失效。");
+		}
+		else
+		{
+			Log.Msg("[AffixRoll] 兼容性自检: " + text);
+		}
+	}
+
 	public static bool IsSet(object item)
 	{
 		return Reflect.ToBool(Reflect.Call(item, new string[2] { "isSet", "IsSet" }));
